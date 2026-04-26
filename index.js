@@ -14,7 +14,6 @@ const CHANNEL_ID = process.env.CHANNEL_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
 const REMINDERS_CHANNEL_ID = process.env.REMINDERS_CHANNEL_ID;
-const USER_ID = process.env.USER_ID;
 
 // ================= CLIENT =================
 const client = new Client({
@@ -97,7 +96,7 @@ function buildButtons() {
 // ================= STATE =================
 let checklistMessage = null;
 
-// ================= REGISTER COMMAND =================
+// ================= COMMAND =================
 const commands = [
   new SlashCommandBuilder()
     .setName('view')
@@ -131,7 +130,7 @@ client.once('clientReady', async () => {
     }
   }
 
-  // 🔥 CREATE ONLY IF MISSING
+  // 🔥 CREATE ONLY ONCE
   if (!checklistMessage) {
     checklistMessage = await channel.send({
       embeds: [buildEmbed()],
@@ -191,7 +190,6 @@ cron.schedule('0 8 * * *', async () => {
 
   saveDB();
 
-  // update checklist
   if (checklistMessage) {
     await checklistMessage.edit({
       embeds: [buildEmbed()],
@@ -199,26 +197,23 @@ cron.schedule('0 8 * * *', async () => {
     });
   }
 
-  // reminder ping
   const ch = await client.channels.fetch(REMINDERS_CHANNEL_ID);
-  ch.send(`<@${USER_ID}> 🔄 Checklist reset at 8AM`);
+  ch.send(`@here 🔄 Daily checklist RESET`);
 
 }, { timezone: "Asia/Manila" });
 
-// ================= REMINDERS =================
+// ================= 1-HOUR BEFORE REMINDERS ONLY =================
 const tasks = [
-  { name: "Ronin + GA8", h: 7 },
-  { name: "Ronin + GA8", h: 8 },
-  { name: "Bounty", h: 10 },
-  { name: "Bounty", h: 11 },
-  { name: "GA10", h: 21 },
-  { name: "GA10", h: 22 }
+  { name: "Ronin + GA8", hour: 7 },
+  { name: "Bounty", hour: 10 },
+  { name: "GA10", hour: 21 }
 ];
 
 tasks.forEach(t => {
-  cron.schedule(`0 ${t.h} * * *`, async () => {
+  cron.schedule(`0 ${t.hour} * * *`, async () => {
     const ch = await client.channels.fetch(REMINDERS_CHANNEL_ID);
-    ch.send(`<@${USER_ID}> ⏰ ${t.name} reminder`);
+
+    ch.send(`@here ⏰ 1 HOUR LEFT → **${t.name}**`);
   }, { timezone: "Asia/Manila" });
 });
 
