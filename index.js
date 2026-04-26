@@ -8,7 +8,13 @@ const cron = require('node-cron');
 const fs = require('fs');
 
 // ================= CONFIG =================
-const TOKEN = process.env.DISCORD_TOKEN; //
+const TOKEN = process.env.DISCORD_TOKEN;
+
+if (!TOKEN) {
+  console.error("Missing DISCORD_TOKEN in environment variables");
+  process.exit(1);
+}
+
 const CLIENT_ID = process.env.CLIENT_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const GUILD_ID = process.env.GUILD_ID;
