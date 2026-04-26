@@ -192,32 +192,31 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'view') {
 
-      const channel = await client.channels.fetch(CHANNEL_ID);
+  await interaction.deferReply({ ephemeral: true });
 
-      let msg;
+  const channel = await client.channels.fetch(CHANNEL_ID);
 
-      try {
-        msg = await channel.messages.fetch(db.messageId);
-      } catch {}
+  let msg;
 
-      // create if missing
-      if (!msg) {
-        msg = await channel.send({
-          embeds: [buildEmbed()],
-          components: [buildButtons()]
-        });
+  try {
+    msg = await channel.messages.fetch(db.messageId);
+  } catch {}
 
-        db.messageId = msg.id;
-        saveDB();
-      }
+  if (!msg) {
+    msg = await channel.send({
+      embeds: [buildEmbed()],
+      components: [buildButtons()]
+    });
 
-      // 👇 NEW UPGRADE: show FULL embed instantly
-      return interaction.reply({
-        embeds: [buildEmbed()],
-        components: [buildButtons()],
-        ephemeral: true
-      });
-    }
+    db.messageId = msg.id;
+    saveDB();
+  }
+
+  return interaction.editReply({
+    embeds: [buildEmbed()],
+    components: [buildButtons()]
+  });
+}
   }
 });
 
