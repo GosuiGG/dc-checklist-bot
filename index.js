@@ -8,10 +8,10 @@ const cron = require('node-cron');
 const fs = require('fs');
 
 // ================= CONFIG =================
-const TOKEN = 'process.env.TOKEN';
-const CLIENT_ID = '1497845608386662400';
-const CHANNEL_ID = '1497848304950579292';
-const GUILD_ID = '768882091940511784';
+const TOKEN = process.env.DISCORD_TOKEN; //
+const CLIENT_ID = process.env.CLIENT_ID;
+const CHANNEL_ID = process.env.CHANNEL_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 // ================= CLIENT =================
 const client = new Client({
@@ -51,18 +51,14 @@ function loadDB() {
         ...(data.checklist || {})
       }
     };
-  } catch (err) {
+  } catch {
     fs.writeFileSync('./data.json', JSON.stringify(DEFAULT_DB, null, 2));
     return DEFAULT_DB;
   }
 }
 
 function saveDB() {
-  try {
-    fs.writeFileSync('./data.json', JSON.stringify(db, null, 2));
-  } catch (err) {
-    console.log("Save error:", err);
-  }
+  fs.writeFileSync('./data.json', JSON.stringify(db, null, 2));
 }
 
 // ================= EMBED =================
@@ -81,8 +77,7 @@ ${db.checklist.ga8 ? '✅' : '⬜'} GA Contest
 ${db.checklist.bounty ? '✅' : '⬜'} Bounty Board  
 
 🌙 10PM
-${db.checklist.ga10 ? '✅' : '⬜'} GA Contest  
-`
+${db.checklist.ga10 ? '✅' : '⬜'} GA Contest`
     )
     .setFooter({ text: "Auto-updates | Resets 8AM PH Time" });
 }
@@ -104,7 +99,7 @@ async function updateMessage() {
   let msg;
 
   try {
-    if (!db.messageId) throw new Error("no message");
+    if (!db.messageId) throw new Error();
 
     msg = await channel.messages.fetch(db.messageId);
 
@@ -128,10 +123,9 @@ async function updateMessage() {
 
 // ================= RESET =================
 function resetChecklist() {
-  const allDone = Object.values(db.checklist).every(v => v === true);
+  const allDone = Object.values(db.checklist).every(v => v);
 
-  if (allDone) db.streak++;
-  else db.streak = 0;
+  db.streak = allDone ? db.streak + 1 : 0;
 
   db.checklist = {
     ronin: false,
@@ -159,26 +153,29 @@ async function registerCommands() {
     { body: commands }
   );
 
-  console.log("✅ Slash commands registered instantly");
+  console.log("✅ Slash commands registered");
 }
 
 // ================= READY =================
-client.once('ready', async () => {
+client.once('clientReady', async () => { // ✅ FIXED EVENT
   console.log(`Logged in as ${client.user.tag}`);
 
-  await registerCommands();
+  try {
+    await registerCommands();
+  } catch (err) {
+    console.error("Command registration failed:", err);
+  }
+
   await updateMessage();
 
-  // 8AM PH RESET
   cron.schedule('0 8 * * *', async () => {
     resetChecklist();
     await updateMessage();
   }, { timezone: "Asia/Manila" });
 });
 
-// ================= BUTTON HANDLER =================
+// ================= INTERACTIONS =================
 client.on('interactionCreate', async interaction => {
-  // BUTTONS
   if (interaction.isButton()) {
     db.checklist[interaction.customId] = !db.checklist[interaction.customId];
     saveDB();
@@ -186,7 +183,6 @@ client.on('interactionCreate', async interaction => {
     return interaction.deferUpdate();
   }
 
-  // /view COMMAND
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'view') {
       return interaction.reply({
@@ -198,4 +194,4 @@ client.on('interactionCreate', async interaction => {
 });
 
 // ================= START =================
-client.login(process.env.TOKEN);
+client.login(TOKEN);
