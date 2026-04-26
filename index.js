@@ -173,59 +173,29 @@ client.once('clientReady', async () => {
 
 // ================= INTERACTIONS =================
 client.on('interactionCreate', async interaction => {
+  if (!interaction.isButton()) return;
 
-  // ================= BUTTONS =================
-  if (interaction.isButton()) {
-    db.checklist[interaction.customId] =
-      !db.checklist[interaction.customId];
+  db.checklist[interaction.customId] =
+    !db.checklist[interaction.customId];
 
-    saveDB();
+  saveDB();
 
-    await interaction.deferUpdate();
-
-    try {
-      const channel = await client.channels.fetch(CHANNEL_ID);
-      const msg = await channel.messages.fetch(db.messageId);
-
-      await msg.edit({
-        embeds: [buildEmbed()],
-        components: [buildButtons()]
-      });
-    } catch (err) {
-      console.error("Button update failed:", err);
-    }
-  }
+  return interaction.update({
+    embeds: [buildEmbed()],
+    components: [buildButtons()]
+  });
+});
 
   // ================= /VIEW =================
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'view') {
-
-      await interaction.deferReply({ ephemeral: true });
-
-      const channel = await client.channels.fetch(CHANNEL_ID);
-
-      let msg;
-
-      try {
-        msg = await channel.messages.fetch(db.messageId);
-      } catch {}
-
-      if (!msg) {
-        msg = await channel.send({
-          embeds: [buildEmbed()],
-          components: [buildButtons()]
-        });
-
-        db.messageId = msg.id;
-        saveDB();
-      }
-
-      return interaction.editReply({
-        content: `📋 Checklist opened: ${msg.url}`
-      });
-    }
+  return interaction.reply({
+    embeds: [buildEmbed()],
+    components: [buildButtons()],
+    ephemeral: true
+  });
+}
   }
-});
 
 // ================= START =================
 client.login(TOKEN);
