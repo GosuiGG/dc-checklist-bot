@@ -98,45 +98,14 @@ function buildButtons() {
   );
 }
 
-// ================= UPDATE MESSAGE =================
-async function updateMessage() {
-  if (!db.messageId) return;
+// ================= MASTER MESSAGE =================
+let checklistMessage = null;
 
-  try {
-    const channel = await client.channels.fetch(CHANNEL_ID);
-    const msg = await channel.messages.fetch(db.messageId);
-
-    await msg.edit({
-      embeds: [buildEmbed()],
-      components: [buildButtons()]
-    });
-
-  } catch (err) {
-    console.error("Update failed:", err);
-  }
-}
-
-// ================= RESET =================
-function resetChecklist() {
-  const allDone = Object.values(db.checklist).every(v => v);
-
-  db.streak = allDone ? db.streak + 1 : 0;
-
-  db.checklist = {
-    ronin: false,
-    ga8: false,
-    bounty: false,
-    ga10: false
-  };
-
-  saveDB();
-}
-
-// ================= SLASH COMMAND =================
+// ================= REGISTER COMMANDS =================
 const commands = [
   new SlashCommandBuilder()
     .setName('view')
-    .setDescription('Open checklist dashboard')
+    .setDescription('Show checklist status')
     .toJSON()
 ];
 
@@ -159,14 +128,24 @@ client.once('clientReady', async () => {
 
   const channel = await client.channels.fetch(CHANNEL_ID);
 
-  // Create ONE master message
-  if (!db.messageId) {
-    const msg = await channel.send({
+  // Load existing message
+  if (db.messageId) {
+    try {
+      checklistMessage = await channel.messages.fetch(db.messageId);
+    } catch {
+      checklistMessage = null;
+    }
+  }
+
+  // Create if missing
+  if (!checklistMessage) {
+    checklistMessage = await channel.send({
       embeds: [buildEmbed()],
       components: [buildButtons()]
     });
 
-    db.messageId = msg.id;
+    await checklistMessage.pin().catch(() => {});
+    db.messageId = checklistMessage.id;
     saveDB();
   }
 });
@@ -174,26 +153,42 @@ client.once('clientReady', async () => {
 // ================= INTERACTIONS =================
 client.on('interactionCreate', async (interaction) => {
 
-  // ================= BUTTONS =================
+  // ================= BUTTONS (REAL-TIME UPDATE) =================
   if (interaction.isButton()) {
+
     db.checklist[interaction.customId] =
       !db.checklist[interaction.customId];
 
     saveDB();
 
-    return interaction.update({
-      embeds: [buildEmbed()],
-      components: [buildButtons()]
-    });
+    await interaction.deferUpdate();
+
+    try {
+      await checklistMessage.edit({
+        embeds: [buildEmbed()],
+        components: [buildButtons()]
+      });
+    } catch (err) {
+      console.error("Button update failed:", err);
+    }
   }
 
-  // ================= SLASH COMMANDS =================
+  // ================= /VIEW (NO BUTTONS, JUST STATUS) =================
   if (interaction.isChatInputCommand()) {
 
     if (interaction.commandName === 'view') {
+
       return interaction.reply({
-        embeds: [buildEmbed()],
-        components: [buildButtons()],
+        content:
+`📋 **Checklist Status**
+🔥 Streak: ${db.streak}
+
+🟢 Ronin: ${db.checklist.ronin ? "Done" : "Pending"}
+🟢 GA8: ${db.checklist.ga8 ? "Done" : "Pending"}
+🟢 Bounty: ${db.checklist.bounty ? "Done" : "Pending"}
+🟢 GA10: ${db.checklist.ga10 ? "Done" : "Pending"}
+
+🔗 Open full checklist: ${checklistMessage?.url || "Not ready yet"}`,
         ephemeral: true
       });
     }
