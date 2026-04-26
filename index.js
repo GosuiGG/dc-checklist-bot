@@ -36,7 +36,7 @@ const DEFAULT_DB = {
   streak: 0
 };
 
-// ================= SAFE DB =================
+// ================= DB =================
 let db = loadDB();
 
 function loadDB() {
@@ -98,26 +98,27 @@ function buildButtons() {
   );
 }
 
-// ================= UPDATE MESSAGE =================
+// ================= UPDATE MESSAGE (FIXED) =================
 async function updateMessage() {
   const channel = await client.channels.fetch(CHANNEL_ID);
 
-const msg = await channel.send({
-  embeds: [buildEmbed()],
-  components: [buildButtons()]
-});
+  if (!db.messageId) return;
 
-db.messageId = msg.id;
-saveDB();
+  try {
+    const msg = await channel.messages.fetch(db.messageId);
 
-return interaction.reply({
-  content: "Checklist posted!",
-  ephemeral: true
-});
+    await msg.edit({
+      embeds: [buildEmbed()],
+      components: [buildButtons()]
+    });
+
+  } catch (err) {
+    console.error("Update failed:", err);
+  }
 }
 
 // ================= RESET =================
-function resetChecklist() { 
+function resetChecklist() {
   const allDone = Object.values(db.checklist).every(v => v);
 
   db.streak = allDone ? db.streak + 1 : 0;
@@ -136,7 +137,7 @@ function resetChecklist() {
 const commands = [
   new SlashCommandBuilder()
     .setName('view')
-    .setDescription('View checklist')
+    .setDescription('Show checklist panel')
     .toJSON()
 ];
 
@@ -152,16 +153,23 @@ async function registerCommands() {
 }
 
 // ================= READY =================
-client.once('clientReady', async () => { // ✅ FIXED EVENT
+client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
-  try {
-    await registerCommands();
-  } catch (err) {
-    console.error("Command registration failed:", err);
-  }
+  await registerCommands();
 
-  await updateMessage();
+  // Create initial message ONLY ONCE
+  const channel = await client.channels.fetch(CHANNEL_ID);
+
+  if (!db.messageId) {
+    const msg = await channel.send({
+      embeds: [buildEmbed()],
+      components: [buildButtons()]
+    });
+
+    db.messageId = msg.id;
+    saveDB();
+  }
 
   cron.schedule('0 8 * * *', async () => {
     resetChecklist();
@@ -171,17 +179,40 @@ client.once('clientReady', async () => { // ✅ FIXED EVENT
 
 // ================= INTERACTIONS =================
 client.on('interactionCreate', async interaction => {
+
+  // BUTTONS
   if (interaction.isButton()) {
     db.checklist[interaction.customId] = !db.checklist[interaction.customId];
     saveDB();
+
+    await interaction.deferUpdate();
     await updateMessage();
-    return interaction.deferUpdate();
   }
 
+  // /view COMMAND
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'view') {
+
+      const channel = await client.channels.fetch(CHANNEL_ID);
+
+      let msg;
+
+      try {
+        msg = await channel.messages.fetch(db.messageId);
+      } catch {}
+
+      if (!msg) {
+        msg = await channel.send({
+          embeds: [buildEmbed()],
+          components: [buildButtons()]
+        });
+
+        db.messageId = msg.id;
+        saveDB();
+      }
+
       return interaction.reply({
-        embeds: [buildEmbed()],
+        content: "Checklist opened.",
         ephemeral: true
       });
     }
