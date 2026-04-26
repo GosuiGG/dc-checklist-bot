@@ -12,7 +12,6 @@ const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const GUILD_ID = process.env.GUILD_ID;
-
 const REMINDERS_CHANNEL_ID = process.env.REMINDERS_CHANNEL_ID;
 
 // ================= CLIENT =================
@@ -95,12 +94,13 @@ function buildButtons() {
 
 // ================= STATE =================
 let checklistMessage = null;
+const cooldown = new Set();
 
 // ================= COMMAND =================
 const commands = [
   new SlashCommandBuilder()
     .setName('view')
-    .setDescription('View checklist')
+    .setDescription('View checklist + pinned link')
     .toJSON()
 ];
 
@@ -121,7 +121,7 @@ client.once('clientReady', async () => {
 
   const channel = await client.channels.fetch(CHANNEL_ID);
 
-  // 🔥 LOAD EXISTING MESSAGE ONLY
+  // load existing message
   if (db.messageId) {
     try {
       checklistMessage = await channel.messages.fetch(db.messageId);
@@ -130,7 +130,7 @@ client.once('clientReady', async () => {
     }
   }
 
-  // 🔥 CREATE ONLY ONCE
+  // create once
   if (!checklistMessage) {
     checklistMessage = await channel.send({
       embeds: [buildEmbed()],
@@ -143,22 +143,35 @@ client.once('clientReady', async () => {
   }
 });
 
-// ================= BUTTON HANDLER =================
+// ================= BUTTON HANDLER (SAFE + INSTANT) =================
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
 
-  db.checklist[interaction.customId] =
-    !db.checklist[interaction.customId];
+  const key = `${interaction.user.id}-${interaction.customId}`;
 
-  saveDB();
+  // 🔒 anti spam click cooldown
+  if (cooldown.has(key)) return;
 
-  await interaction.deferUpdate();
+  cooldown.add(key);
+  setTimeout(() => cooldown.delete(key), 800);
 
-  if (checklistMessage) {
-    await checklistMessage.edit({
-      embeds: [buildEmbed()],
-      components: [buildButtons()]
-    });
+  try {
+    await interaction.deferUpdate();
+
+    db.checklist[interaction.customId] =
+      !db.checklist[interaction.customId];
+
+    saveDB();
+
+    if (checklistMessage) {
+      await checklistMessage.edit({
+        embeds: [buildEmbed()],
+        components: [buildButtons()]
+      });
+    }
+
+  } catch (err) {
+    console.error("Button error:", err);
   }
 });
 
@@ -167,8 +180,23 @@ client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === 'view') {
+
+    const link = checklistMessage
+      ? `https://discord.com/channels/${GUILD_ID}/${CHANNEL_ID}/${db.messageId}`
+      : "Checklist not created yet.";
+
     return interaction.reply({
-      embeds: [buildEmbed()],
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("📋 Checklist Status")
+          .setDescription(
+`🔥 **Streak:** ${db.streak}
+
+📌 View full checklist here:
+[Open Pinned Checklist](${link})`
+          )
+          .setColor(0x00AE86)
+      ],
       ephemeral: true
     });
   }
@@ -198,11 +226,11 @@ cron.schedule('0 8 * * *', async () => {
   }
 
   const ch = await client.channels.fetch(REMINDERS_CHANNEL_ID);
-  ch.send(`@here 🔄 Daily checklist RESET`);
+  ch.send(`@here 🔄 Checklist reset (8AM)`);
 
 }, { timezone: "Asia/Manila" });
 
-// ================= 1-HOUR BEFORE REMINDERS ONLY =================
+// ================= 1-HOUR BEFORE REMINDERS =================
 const tasks = [
   { name: "Ronin + GA8", hour: 7 },
   { name: "Bounty", hour: 10 },
@@ -212,7 +240,6 @@ const tasks = [
 tasks.forEach(t => {
   cron.schedule(`0 ${t.hour} * * *`, async () => {
     const ch = await client.channels.fetch(REMINDERS_CHANNEL_ID);
-
     ch.send(`@here ⏰ 1 HOUR LEFT → **${t.name}**`);
   }, { timezone: "Asia/Manila" });
 });
