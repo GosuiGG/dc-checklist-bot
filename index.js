@@ -178,45 +178,29 @@ client.once('clientReady', async () => {
 
 // ================= INTERACTIONS =================
 client.on('interactionCreate', async interaction => {
+  if (!interaction.isButton()) return;
 
-  // BUTTON HANDLING
-  if (interaction.isButton()) {
-    db.checklist[interaction.customId] = !db.checklist[interaction.customId];
-    saveDB();
+  // toggle value
+  db.checklist[interaction.customId] =
+    !db.checklist[interaction.customId];
 
-    await interaction.deferUpdate();
-    await updateMessage();
-  }
+  saveDB();
 
-  // /view COMMAND (UPGRADED UX)
-  if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === 'view') {
+  await interaction.deferUpdate();
 
-  await interaction.deferReply({ ephemeral: true });
-
+  // ALWAYS update the same master message
   const channel = await client.channels.fetch(CHANNEL_ID);
 
-  let msg;
-
   try {
-    msg = await channel.messages.fetch(db.messageId);
-  } catch {}
+    const msg = await channel.messages.fetch(db.messageId);
 
-  if (!msg) {
-    msg = await channel.send({
+    await msg.edit({
       embeds: [buildEmbed()],
       components: [buildButtons()]
     });
 
-    db.messageId = msg.id;
-    saveDB();
-  }
-
-  return interaction.editReply({
-    embeds: [buildEmbed()],
-    components: [buildButtons()]
-  });
-}
+  } catch (err) {
+    console.error("Button update failed:", err);
   }
 });
 
