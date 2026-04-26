@@ -172,30 +172,33 @@ client.once('clientReady', async () => {
 });
 
 // ================= INTERACTIONS =================
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isButton()) return;
+client.on('interactionCreate', async (interaction) => {
 
-  db.checklist[interaction.customId] =
-    !db.checklist[interaction.customId];
+  // ================= BUTTONS =================
+  if (interaction.isButton()) {
+    db.checklist[interaction.customId] =
+      !db.checklist[interaction.customId];
 
-  saveDB();
+    saveDB();
 
-  return interaction.update({
-    embeds: [buildEmbed()],
-    components: [buildButtons()]
-  });
-});
-
-  // ================= /VIEW =================
-  if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === 'view') {
-  return interaction.reply({
-    embeds: [buildEmbed()],
-    components: [buildButtons()],
-    ephemeral: true
-  });
-}
+    return interaction.update({
+      embeds: [buildEmbed()],
+      components: [buildButtons()]
+    });
   }
+
+  // ================= SLASH COMMANDS =================
+  if (interaction.isChatInputCommand()) {
+
+    if (interaction.commandName === 'view') {
+      return interaction.reply({
+        embeds: [buildEmbed()],
+        components: [buildButtons()],
+        ephemeral: true
+      });
+    }
+  }
+});
 
 // ================= START =================
 client.login(TOKEN);
