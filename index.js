@@ -1,22 +1,20 @@
-const { 
-  Client, GatewayIntentBits, 
+const {
+  Client, GatewayIntentBits,
   ActionRowBuilder, ButtonBuilder, ButtonStyle,
   EmbedBuilder, REST, Routes, SlashCommandBuilder
 } = require('discord.js');
 
+const cron = require('node-cron');
 const fs = require('fs');
 
 // ================= CONFIG =================
 const TOKEN = process.env.DISCORD_TOKEN;
-
-if (!TOKEN) {
-  console.error("Missing DISCORD_TOKEN");
-  process.exit(1);
-}
-
 const CLIENT_ID = process.env.CLIENT_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const GUILD_ID = process.env.GUILD_ID;
+
+const REMINDERS_CHANNEL_ID = process.env.REMINDERS_CHANNEL_ID;
+const USER_ID = process.env.USER_ID;
 
 // ================= CLIENT =================
 const client = new Client({
@@ -74,14 +72,14 @@ function buildEmbed() {
 `🔥 **Streak:** ${db.streak}
 
 🕗 8AM
-${db.checklist.ronin ? '✅' : '⬜'} Ronin Bounties  
-${db.checklist.ga8 ? '✅' : '⬜'} GA Contest  
+${db.checklist.ronin ? '✅' : '⬜'} Ronin  
+${db.checklist.ga8 ? '✅' : '⬜'} GA 8AM  
 
 🕚 11AM
-${db.checklist.bounty ? '✅' : '⬜'} Bounty Board  
+${db.checklist.bounty ? '✅' : '⬜'} Bounty  
 
 🌙 10PM
-${db.checklist.ga10 ? '✅' : '⬜'} GA Contest`
+${db.checklist.ga10 ? '✅' : '⬜'} GA 10PM`
     )
     .setFooter({ text: "Live checklist system" });
 }
@@ -96,17 +94,10 @@ function buildButtons() {
   );
 }
 
-// ================= /VIEW BUTTON =================
-function viewButton() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setLabel("Open Checklist")
-      .setStyle(ButtonStyle.Link)
-      .setURL(`https://discord.com/channels/${GUILD_ID}/${CHANNEL_ID}/${db.messageId}`)
-  );
-}
+// ================= STATE =================
+let checklistMessage = null;
 
-// ================= COMMAND =================
+// ================= REGISTER COMMAND =================
 const commands = [
   new SlashCommandBuilder()
     .setName('view')
@@ -121,13 +112,9 @@ async function registerCommands() {
     Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
     { body: commands }
   );
-
-  console.log("✅ Commands registered");
 }
 
 // ================= READY =================
-let checklistMessage = null;
-
 client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
@@ -135,6 +122,7 @@ client.once('clientReady', async () => {
 
   const channel = await client.channels.fetch(CHANNEL_ID);
 
+  // 🔥 LOAD EXISTING MESSAGE ONLY
   if (db.messageId) {
     try {
       checklistMessage = await channel.messages.fetch(db.messageId);
@@ -143,6 +131,7 @@ client.once('clientReady', async () => {
     }
   }
 
+  // 🔥 CREATE ONLY IF MISSING
   if (!checklistMessage) {
     checklistMessage = await channel.send({
       embeds: [buildEmbed()],
@@ -155,37 +144,82 @@ client.once('clientReady', async () => {
   }
 });
 
-// ================= INTERACTIONS =================
+// ================= BUTTON HANDLER =================
 client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isButton()) return;
 
-  // BUTTONS ON MAIN CHECKLIST
-  if (interaction.isButton()) {
+  db.checklist[interaction.customId] =
+    !db.checklist[interaction.customId];
 
-    db.checklist[interaction.customId] =
-      !db.checklist[interaction.customId];
+  saveDB();
 
-    saveDB();
+  await interaction.deferUpdate();
 
-    await interaction.deferUpdate();
+  if (checklistMessage) {
+    await checklistMessage.edit({
+      embeds: [buildEmbed()],
+      components: [buildButtons()]
+    });
+  }
+});
 
+// ================= /VIEW =================
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === 'view') {
+    return interaction.reply({
+      embeds: [buildEmbed()],
+      ephemeral: true
+    });
+  }
+});
+
+// ================= 8AM RESET =================
+cron.schedule('0 8 * * *', async () => {
+
+  const allDone = Object.values(db.checklist).every(v => v);
+
+  db.streak = allDone ? db.streak + 1 : 0;
+
+  db.checklist = {
+    ronin: false,
+    ga8: false,
+    bounty: false,
+    ga10: false
+  };
+
+  saveDB();
+
+  // update checklist
+  if (checklistMessage) {
     await checklistMessage.edit({
       embeds: [buildEmbed()],
       components: [buildButtons()]
     });
   }
 
-  // /VIEW COMMAND
-  if (interaction.isChatInputCommand()) {
+  // reminder ping
+  const ch = await client.channels.fetch(REMINDERS_CHANNEL_ID);
+  ch.send(`<@${USER_ID}> 🔄 Checklist reset at 8AM`);
 
-    if (interaction.commandName === 'view') {
+}, { timezone: "Asia/Manila" });
 
-      return interaction.reply({
-        embeds: [buildEmbed()],
-        components: [viewButton()],
-        ephemeral: true
-      });
-    }
-  }
+// ================= REMINDERS =================
+const tasks = [
+  { name: "Ronin + GA8", h: 7 },
+  { name: "Ronin + GA8", h: 8 },
+  { name: "Bounty", h: 10 },
+  { name: "Bounty", h: 11 },
+  { name: "GA10", h: 21 },
+  { name: "GA10", h: 22 }
+];
+
+tasks.forEach(t => {
+  cron.schedule(`0 ${t.h} * * *`, async () => {
+    const ch = await client.channels.fetch(REMINDERS_CHANNEL_ID);
+    ch.send(`<@${USER_ID}> ⏰ ${t.name} reminder`);
+  }, { timezone: "Asia/Manila" });
 });
 
 // ================= START =================
