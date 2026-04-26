@@ -157,9 +157,9 @@ client.once('clientReady', async () => {
 
   await registerCommands();
 
-  // Create ONE persistent message
   const channel = await client.channels.fetch(CHANNEL_ID);
 
+  // Create ONE master message
   if (!db.messageId) {
     const msg = await channel.send({
       embeds: [buildEmbed()],
@@ -169,38 +169,61 @@ client.once('clientReady', async () => {
     db.messageId = msg.id;
     saveDB();
   }
-
-  cron.schedule('0 8 * * *', async () => {
-    resetChecklist();
-    await updateMessage();
-  }, { timezone: "Asia/Manila" });
 });
 
 // ================= INTERACTIONS =================
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isButton()) return;
 
-  // toggle value
-  db.checklist[interaction.customId] =
-    !db.checklist[interaction.customId];
+  // ================= BUTTONS =================
+  if (interaction.isButton()) {
+    db.checklist[interaction.customId] =
+      !db.checklist[interaction.customId];
 
-  saveDB();
+    saveDB();
 
-  await interaction.deferUpdate();
+    await interaction.deferUpdate();
 
-  // ALWAYS update the same master message
-  const channel = await client.channels.fetch(CHANNEL_ID);
+    try {
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      const msg = await channel.messages.fetch(db.messageId);
 
-  try {
-    const msg = await channel.messages.fetch(db.messageId);
+      await msg.edit({
+        embeds: [buildEmbed()],
+        components: [buildButtons()]
+      });
+    } catch (err) {
+      console.error("Button update failed:", err);
+    }
+  }
 
-    await msg.edit({
-      embeds: [buildEmbed()],
-      components: [buildButtons()]
-    });
+  // ================= /VIEW =================
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === 'view') {
 
-  } catch (err) {
-    console.error("Button update failed:", err);
+      await interaction.deferReply({ ephemeral: true });
+
+      const channel = await client.channels.fetch(CHANNEL_ID);
+
+      let msg;
+
+      try {
+        msg = await channel.messages.fetch(db.messageId);
+      } catch {}
+
+      if (!msg) {
+        msg = await channel.send({
+          embeds: [buildEmbed()],
+          components: [buildButtons()]
+        });
+
+        db.messageId = msg.id;
+        saveDB();
+      }
+
+      return interaction.editReply({
+        content: `📋 Checklist opened: ${msg.url}`
+      });
+    }
   }
 });
 
