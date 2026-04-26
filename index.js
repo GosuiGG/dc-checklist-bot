@@ -4,14 +4,13 @@ const {
   EmbedBuilder, REST, Routes, SlashCommandBuilder
 } = require('discord.js');
 
-const cron = require('node-cron');
 const fs = require('fs');
 
 // ================= CONFIG =================
 const TOKEN = process.env.DISCORD_TOKEN;
 
 if (!TOKEN) {
-  console.error("Missing DISCORD_TOKEN in environment variables");
+  console.error("Missing DISCORD_TOKEN");
   process.exit(1);
 }
 
@@ -24,7 +23,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// ================= DEFAULT DB =================
+// ================= DB =================
 const DEFAULT_DB = {
   messageId: null,
   checklist: {
@@ -36,7 +35,6 @@ const DEFAULT_DB = {
   streak: 0
 };
 
-// ================= DB =================
 let db = loadDB();
 
 function loadDB() {
@@ -85,7 +83,7 @@ ${db.checklist.bounty ? '✅' : '⬜'} Bounty Board
 🌙 10PM
 ${db.checklist.ga10 ? '✅' : '⬜'} GA Contest`
     )
-    .setFooter({ text: "Auto-updates | Resets 8AM PH Time" });
+    .setFooter({ text: "Live checklist system" });
 }
 
 // ================= BUTTONS =================
@@ -98,14 +96,21 @@ function buildButtons() {
   );
 }
 
-// ================= MASTER MESSAGE =================
-let checklistMessage = null;
+// ================= /VIEW BUTTON =================
+function viewButton() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel("Open Checklist")
+      .setStyle(ButtonStyle.Link)
+      .setURL(`https://discord.com/channels/${GUILD_ID}/${CHANNEL_ID}/${db.messageId}`)
+  );
+}
 
-// ================= REGISTER COMMANDS =================
+// ================= COMMAND =================
 const commands = [
   new SlashCommandBuilder()
     .setName('view')
-    .setDescription('Show checklist status')
+    .setDescription('View checklist')
     .toJSON()
 ];
 
@@ -117,10 +122,12 @@ async function registerCommands() {
     { body: commands }
   );
 
-  console.log("✅ Slash commands registered");
+  console.log("✅ Commands registered");
 }
 
 // ================= READY =================
+let checklistMessage = null;
+
 client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
@@ -128,7 +135,6 @@ client.once('clientReady', async () => {
 
   const channel = await client.channels.fetch(CHANNEL_ID);
 
-  // Load existing message
   if (db.messageId) {
     try {
       checklistMessage = await channel.messages.fetch(db.messageId);
@@ -137,7 +143,6 @@ client.once('clientReady', async () => {
     }
   }
 
-  // Create if missing
   if (!checklistMessage) {
     checklistMessage = await channel.send({
       embeds: [buildEmbed()],
@@ -153,7 +158,7 @@ client.once('clientReady', async () => {
 // ================= INTERACTIONS =================
 client.on('interactionCreate', async (interaction) => {
 
-  // ================= BUTTONS (REAL-TIME UPDATE) =================
+  // BUTTONS ON MAIN CHECKLIST
   if (interaction.isButton()) {
 
     db.checklist[interaction.customId] =
@@ -163,32 +168,20 @@ client.on('interactionCreate', async (interaction) => {
 
     await interaction.deferUpdate();
 
-    try {
-      await checklistMessage.edit({
-        embeds: [buildEmbed()],
-        components: [buildButtons()]
-      });
-    } catch (err) {
-      console.error("Button update failed:", err);
-    }
+    await checklistMessage.edit({
+      embeds: [buildEmbed()],
+      components: [buildButtons()]
+    });
   }
 
-  // ================= /VIEW (NO BUTTONS, JUST STATUS) =================
+  // /VIEW COMMAND
   if (interaction.isChatInputCommand()) {
 
     if (interaction.commandName === 'view') {
 
       return interaction.reply({
-        content:
-`📋 **Checklist Status**
-🔥 Streak: ${db.streak}
-
-🟢 Ronin: ${db.checklist.ronin ? "Done" : "Pending"}
-🟢 GA8: ${db.checklist.ga8 ? "Done" : "Pending"}
-🟢 Bounty: ${db.checklist.bounty ? "Done" : "Pending"}
-🟢 GA10: ${db.checklist.ga10 ? "Done" : "Pending"}
-
-🔗 Open full checklist: ${checklistMessage?.url || "Not ready yet"}`,
+        embeds: [buildEmbed()],
+        components: [viewButton()],
         ephemeral: true
       });
     }
