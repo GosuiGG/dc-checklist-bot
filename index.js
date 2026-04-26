@@ -102,33 +102,22 @@ function buildButtons() {
 async function updateMessage() {
   const channel = await client.channels.fetch(CHANNEL_ID);
 
-  let msg;
+const msg = await channel.send({
+  embeds: [buildEmbed()],
+  components: [buildButtons()]
+});
 
-  try {
-    if (!db.messageId) throw new Error();
+db.messageId = msg.id;
+saveDB();
 
-    msg = await channel.messages.fetch(db.messageId);
-
-    await msg.edit({
-      embeds: [buildEmbed()],
-      components: [buildButtons()]
-    });
-
-  } catch {
-    msg = await channel.send({
-      embeds: [buildEmbed()],
-      components: [buildButtons()]
-    });
-
-    db.messageId = msg.id;
-    await msg.pin().catch(() => {});
-  }
-
-  saveDB();
+return interaction.reply({
+  content: "Checklist posted!",
+  ephemeral: true
+});
 }
 
 // ================= RESET =================
-function resetChecklist() {
+function resetChecklist() { 
   const allDone = Object.values(db.checklist).every(v => v);
 
   db.streak = allDone ? db.streak + 1 : 0;
