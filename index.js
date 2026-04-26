@@ -98,13 +98,12 @@ function buildButtons() {
   );
 }
 
-// ================= UPDATE MESSAGE (FIXED) =================
+// ================= UPDATE MESSAGE =================
 async function updateMessage() {
-  const channel = await client.channels.fetch(CHANNEL_ID);
-
   if (!db.messageId) return;
 
   try {
+    const channel = await client.channels.fetch(CHANNEL_ID);
     const msg = await channel.messages.fetch(db.messageId);
 
     await msg.edit({
@@ -137,7 +136,7 @@ function resetChecklist() {
 const commands = [
   new SlashCommandBuilder()
     .setName('view')
-    .setDescription('Show checklist panel')
+    .setDescription('Open checklist dashboard')
     .toJSON()
 ];
 
@@ -158,7 +157,7 @@ client.once('clientReady', async () => {
 
   await registerCommands();
 
-  // Create initial message ONLY ONCE
+  // Create ONE persistent message
   const channel = await client.channels.fetch(CHANNEL_ID);
 
   if (!db.messageId) {
@@ -180,7 +179,7 @@ client.once('clientReady', async () => {
 // ================= INTERACTIONS =================
 client.on('interactionCreate', async interaction => {
 
-  // BUTTONS
+  // BUTTON HANDLING
   if (interaction.isButton()) {
     db.checklist[interaction.customId] = !db.checklist[interaction.customId];
     saveDB();
@@ -189,7 +188,7 @@ client.on('interactionCreate', async interaction => {
     await updateMessage();
   }
 
-  // /view COMMAND
+  // /view COMMAND (UPGRADED UX)
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'view') {
 
@@ -201,6 +200,7 @@ client.on('interactionCreate', async interaction => {
         msg = await channel.messages.fetch(db.messageId);
       } catch {}
 
+      // create if missing
       if (!msg) {
         msg = await channel.send({
           embeds: [buildEmbed()],
@@ -211,8 +211,10 @@ client.on('interactionCreate', async interaction => {
         saveDB();
       }
 
+      // 👇 NEW UPGRADE: show FULL embed instantly
       return interaction.reply({
-        content: "Checklist opened.",
+        embeds: [buildEmbed()],
+        components: [buildButtons()],
         ephemeral: true
       });
     }
